@@ -37,7 +37,7 @@ def load_file(path: Path, root: Path) -> list[Document]:
 
     if suffix in TEXT_SUFFIXES:
         text = path.read_text(encoding="utf-8", errors="ignore")
-        return [Document(page_content=text, metadata={"source": source})]
+        return [Document(page_content=text, metadata={"source": source, "page": 1})]
 
     if suffix in PDF_SUFFIXES:
         docs: list[Document] = []
