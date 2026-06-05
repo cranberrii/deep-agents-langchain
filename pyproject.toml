@@ -1,0 +1,38 @@
+[project]
+name = "deep-research-agent"
+version = "0.1.0"
+description = "Simple CLI deep-research agent built on LangChain deepagents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents",
+    "langchain-openai",
+    "tavily-python",
+    "python-dotenv",
+    # Pinned: langchain-milvus 0.3.x's ORM `col` path is broken against
+    # pymilvus 2.6 (MilvusClient no longer registers an ORM connection).
+    # 0.2.2 + pymilvus 2.5.x is the working pair.
+    "langchain-milvus==0.2.2",
+    "pymilvus>=2.5.7,<2.6",
+    "langchain-huggingface",
+    "sentence-transformers",
+    "langchain-text-splitters",
+    "langchain-community",
+    "pypdf",
+]
+
+[project.scripts]
+research-agent = "research_agent:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: tests that require a running Milvus (deselect with '-m \"not integration\"')",
+]

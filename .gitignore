@@ -1,0 +1,18 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.claude
+.idea
+
+# Secrets & config
+.env
+
+# Milvus persistent data
+volumes/
+
+# Knowledge base source docs
+data/
+
+# Generated output
+final_report.md
