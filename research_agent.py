@@ -44,12 +44,19 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
 from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
 from tools import internet_search, kb_rag_search, require_env
 
 load_dotenv()
 
 # Knob that shapes the model sampling temperature.
 MODEL_TEMPERATURE = float(os.environ.get("MODEL_TEMPERATURE", "0.0"))
+
+# All agent file I/O is persisted to disk under the project's `runs/` folder.
+# With `virtual_mode=True`, the agent's absolute paths (e.g. `/final_report.md`)
+# resolve *inside* RUNS_DIR instead of the real filesystem root, and path
+# traversal (`..`, `~`) is blocked.
+RUNS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
 
 
 # --------------------------------------------------------------------------- #
@@ -125,11 +132,17 @@ def build_agent():
         "tools": [internet_search, kb_rag_search],
     }
 
+    # Persist all agent files (reports, summarization offloads, etc.) to disk
+    # under the project's `runs/` folder rather than ephemeral agent state.
+    os.makedirs(RUNS_DIR, exist_ok=True)
+    backend = FilesystemBackend(root_dir=RUNS_DIR, virtual_mode=True)
+
     return create_deep_agent(
         model=model,
         tools=[internet_search, kb_rag_search],
         system_prompt=MAIN_AGENT_PROMPT,
         subagents=[research_subagent],
+        backend=backend,
     )
 
 
@@ -188,7 +201,6 @@ def main() -> None:
     print(f"\n🔎 Researching: {question}\n" + "=" * 70)
 
     agent = build_agent()
-    final_state = None
     # Stream intermediate steps so you can watch planning + delegation happen.
     # `subgraphs=True` makes LangGraph emit updates from *inside* the `task`
     # tool's nested sub-agent runs too — so we see the sub-agent's own thinking,
@@ -207,24 +219,14 @@ def main() -> None:
             if isinstance(messages, list):
                 for message in messages:
                     _log_message(message, f"{label}/{node}", indent)
-            # Keep the deepest top-level (main-agent) update for report extraction.
-            if not namespace:
-                final_state = update
 
-    # Pull the written report out of the agent's virtual filesystem if present.
-    report = None
-    if final_state and isinstance(final_state.get("files"), dict):
-        report = final_state["files"].get("final_report.md")
-        # Files may be stored as objects with a "content" attribute/key.
-        if report is not None and not isinstance(report, str):
-            report = getattr(report, "content", None) or report.get("content")
-
-    if report:
-        out_path = "final_report.md"
-        with open(out_path, "w", encoding="utf-8") as fh:
-            fh.write(report)
+    # The agent writes the report straight to disk via FilesystemBackend, so we just read it back from the project dir.
+    report_path = os.path.join(RUNS_DIR, "final_report.md")
+    if os.path.exists(report_path):
+        with open(report_path, encoding="utf-8") as fh:
+            report = fh.read()
         print("\n" + "=" * 70)
-        print(f"✅ Report written to {out_path}\n")
+        print(f"✅ Report written to {report_path}\n")
         print(report)
 
 

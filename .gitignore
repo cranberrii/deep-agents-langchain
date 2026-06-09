@@ -14,5 +14,5 @@ volumes/
 # Knowledge base source docs
 data/
 
-# Generated output
-final_report.md
+# Generated output (agent run artifacts: reports, conversation history, etc.)
+runs/
