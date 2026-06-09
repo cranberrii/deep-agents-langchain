@@ -134,6 +134,41 @@ def build_agent():
 
 
 # --------------------------------------------------------------------------- #
+# Streaming / logging                                                          #
+# --------------------------------------------------------------------------- #
+def _agent_label(namespace: tuple[str, ...]) -> str:
+    """Human-readable label for which (sub)agent a stream update came from.
+
+    LangGraph reports subgraph updates with a `namespace` tuple whose entries
+    look like ``"<node>:<run-id>"``. An empty tuple is the top-level (main)
+    agent; any non-empty namespace means we're inside the `task` tool running a
+    sub-agent as a nested subgraph.
+    """
+    if not namespace:
+        return "main-agent"
+    nodes = [segment.split(":", 1)[0] for segment in namespace]
+    return "subagent:" + " > ".join(nodes)
+
+
+def _log_message(message, label: str, indent: str) -> None:
+    """Print one message plus any reasoning/tool-call detail it carries."""
+    print(f"\n{indent}┌─[{label}] {message.__class__.__name__}")
+
+    # Surface "thinking" — reasoning models stash it in additional_kwargs and
+    # different OpenAI-compatible backends use different key names.
+    extra = getattr(message, "additional_kwargs", {}) or {}
+    reasoning = extra.get("reasoning_content") or extra.get("reasoning")
+    if reasoning:
+        print(f"{indent}│ 🧠 thinking: {reasoning}")
+
+    # Tool calls the agent decided to make this step.
+    for call in getattr(message, "tool_calls", None) or []:
+        print(f"{indent}│ 🔧 tool_call: {call.get('name')}({call.get('args')})")
+
+    message.pretty_print()
+
+
+# --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
 def get_question() -> str:
@@ -155,18 +190,26 @@ def main() -> None:
     agent = build_agent()
     final_state = None
     # Stream intermediate steps so you can watch planning + delegation happen.
-    for step in agent.stream(
+    # `subgraphs=True` makes LangGraph emit updates from *inside* the `task`
+    # tool's nested sub-agent runs too — so we see the sub-agent's own thinking,
+    # tool calls and responses instead of just the collapsed task result.
+    for namespace, step in agent.stream(
         {"messages": [{"role": "user", "content": question}]},
         stream_mode="updates",
+        subgraphs=True,
     ):
-        for _, update in step.items():
+        label = _agent_label(namespace)
+        indent = "    " * len(namespace)
+        for node, update in step.items():
             if not update:
                 continue
             messages = update.get("messages")
             if isinstance(messages, list):
                 for message in messages:
-                    message.pretty_print()
-            final_state = update
+                    _log_message(message, f"{label}/{node}", indent)
+            # Keep the deepest top-level (main-agent) update for report extraction.
+            if not namespace:
+                final_state = update
 
     # Pull the written report out of the agent's virtual filesystem if present.
     report = None
